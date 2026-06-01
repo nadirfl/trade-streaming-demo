@@ -286,6 +286,145 @@ Der Gold Layer stellt die konsumierbare Sicht für Analytics und Reporting dar.
 6. Silver wird zu Gold aggregiert.
 7. Tableau kann auf den Gold Layer zugreifen.
 
+# Beispiel Datenfluss
+
+## 1. Producer Event
+
+Der Spring Boot Producer erzeugt ein Trade Event und veröffentlicht dieses auf das Kafka Topic `trade-events`.
+
+```json
+{
+  "eventId": "evt-001",
+  "tradeId": "trd-1001",
+  "eventType": "NEW",
+  "eventTimestamp": 1748170102.123,
+  "quantity": 1000000,
+  "price": 99.52,
+  "counterparty": "UBS",
+  "instrument": "BOND-XS123",
+  "currency": "CHF"
+}
+```
+
+---
+
+## 2. Kafka Message
+
+Die Nachricht wird unverändert im Kafka Topic gespeichert.
+
+Topic:
+
+```text
+trade-events
+```
+
+Payload:
+
+```json
+{
+  "eventId": "evt-001",
+  "tradeId": "trd-1001",
+  "eventType": "NEW",
+  "eventTimestamp": 1748170102.123,
+  "quantity": 1000000,
+  "price": 99.52,
+  "counterparty": "UBS",
+  "instrument": "BOND-XS123",
+  "currency": "CHF"
+}
+```
+
+---
+
+## 3. Bronze Layer
+
+Der Python Consumer liest die Kafka Message und speichert das vollständige Event als JSONB in PostgreSQL.
+
+Tabelle:
+
+```text
+bronze_trade_events
+```
+
+| id | kafka_partition | kafka_offset | raw_event                   |
+| -- | --------------- | ------------ | --------------------------- |
+| 1  | 0               | 15           | { ... komplettes JSON ... } |
+
+Ziel:
+
+* Rohdaten unverändert speichern
+* Reprocessing ermöglichen
+* Vollständige Nachvollziehbarkeit sicherstellen
+
+---
+
+## 4. Silver Layer
+
+Die Pipeline extrahiert die Felder aus dem Roh-JSON, validiert diese und speichert sie in strukturierter Form.
+
+Tabelle:
+
+```text
+silver_trade_events
+```
+
+| event_id | trade_id | event_type | quantity | price | counterparty | instrument | currency | is_valid |
+| -------- | -------- | ---------- | -------- | ----- | ------------ | ---------- | -------- | -------- |
+| evt-001  | trd-1001 | NEW        | 1000000  | 99.52 | UBS          | BOND-XS123 | CHF      | true     |
+
+Verarbeitungen:
+
+* JSON Parsing
+* Datentyp-Konvertierung
+* Validierung von Pflichtfeldern
+* Fehlererkennung
+* Deduplizierung
+
+---
+
+## 5. Gold Layer
+
+Der Gold Layer enthält den aktuellen Zustand eines Trades.
+
+Mehrere Events:
+
+| event_id | trade_id | event_type | quantity |
+| -------- | -------- | ---------- | -------- |
+| evt-001  | trd-1001 | NEW        | 1000000  |
+| evt-002  | trd-1001 | AMEND      | 1500000  |
+
+werden zu:
+
+| trade_id | latest_event_id | trade_status | quantity |
+| -------- | --------------- | ------------ | -------- |
+| trd-1001 | evt-002         | AMEND        | 1500000  |
+
+aggregiert.
+
+Ziel:
+
+* Eine Zeile pro Trade
+* Aktueller Trade-Zustand
+* Reporting- und Tableau-fähige Datenstruktur
+
+---
+
+## Zusammenfassung
+
+```text
+Trade Event
+    ↓
+Kafka Topic
+    ↓
+Bronze (Raw JSON)
+    ↓
+Silver (Validierte Events)
+    ↓
+Gold (Aktueller Trade State)
+    ↓
+Tableau / Analytics
+```
+
 ---
 
 # Aktueller Stand
