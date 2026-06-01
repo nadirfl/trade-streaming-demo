@@ -1,0 +1,19 @@
+# Java
+producer-java/target/
+*.class
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / Env
+.env
